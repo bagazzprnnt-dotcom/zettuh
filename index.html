@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Bubble Shooter Neon Pop!</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+
+:root {
+  --bg: #060814; --panel: #0b0f26; --accent: #00f2fe; --shadow: rgba(0,0,0,0.8);
+}
+
+body {
+  background: var(--bg); min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center;
+  font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden;
+  background-image: 
+    radial-gradient(circle at 50% 10%, #1e1b4b 0%, transparent 60%),
+    radial-gradient(circle at 50% 90%, #0f172a 0%, var(--bg) 70%);
+}
+
+/* CONTAINER GAME */
+.game-container {
+  width: 100%; max-width: 420px; height: 100vh;
+  display: flex; flex-direction: column; position: relative;
+  box-shadow: 0 0 40px rgba(0, 242, 254, 0.15); background: rgba(11, 15, 38, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+/* HEADER STATS */
+.header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; background: var(--panel); 
+  border-bottom: 2px solid #1e293b; z-index: 10;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+.score-box { display: flex; flex-direction: column; }
+.lbl { font-size: 10px; color: #38bdf8; text-transform: uppercase; letter-spacing: 2px; font-weight: 800; }
+.val { font-size: 26px; color: #fff; font-weight: 900; text-shadow: 0 0 10px rgba(56, 189, 248, 0.6); }
+.btn-restart {
+  background: linear-gradient(135deg, #1e293b, #0f172a); color: #38bdf8; 
+  border: 1px solid #38bdf8; padding: 8px 16px; font-size: 12px;
+  border-radius: 10px; font-weight: bold; cursor: pointer; transition: 0.2s;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+.btn-restart:active { transform: scale(0.95); background: #38bdf8; color: #fff; }
+
+/* CANVAS AREA */
+.canvas-wrap {
+  flex: 1; position: relative; width: 100%; overflow: hidden;
+}
+canvas {
+  display: block; width: 100%; height: 100%; background: transparent;
+}
+
+/* OVERLAY GAME OVER */
+.overlay {
+  display: none; position: absolute; inset: 0; background: rgba(4, 6, 18, 0.9);
+  backdrop-filter: blur(12px); z-index: 100; align-items: center; justify-content: center;
+}
+.overlay.show { display: flex; }
+.modal {
+  background: linear-gradient(160deg, #0f172a, #0b0f26); 
+  border: 2px solid #ef4444; border-radius: 28px;
+  padding: 36px 28px; text-align: center; width: 85%; max-width: 330px;
+  box-shadow: 0 0 30px rgba(239, 68, 68, 0.3);
+  animation: modalIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes modalIn {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.modal h1 { color: #ef4444; font-size: 34px; margin-bottom: 6px; font-weight: 900; text-shadow: 0 0 15px rgba(239, 68, 68, 0.5); }
+.modal p { color: #94a3b8; font-size: 13px; margin-bottom: 24px; }
+.final-score-val { font-size: 46px; color: #f5a623; font-weight: 900; margin-bottom: 28px; text-shadow: 0 0 15px rgba(245, 166, 35, 0.5); }
+.btn-play {
+  background: linear-gradient(135deg, #00f2fe, #4facfe); color: #fff;
+  border: none; border-radius: 16px; padding: 14px 42px; font-size: 18px;
+  font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0, 242, 254, 0.4);
+  transition: 0.2s;
+}
+.btn-play:active { transform: scale(0.95); }
+</style>
+</head>
+<body>
+
+<div class="game-container">
+  <div class="header">
+    <div class="score-box">
+      <span class="lbl">Neon Score</span>
+      <span class="val" id="score-display">0</span>
+    </div>
+    <button class="btn-restart" onclick="resetGame()">Reset</button>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h1>💥 BOOM!</h1>
+      <p><span class="lbl">GAME OVER - SKOR KAMU</span></p>
+      <div class="final-score-val" id="final-score">0</div>
+      <button class="btn-play" onclick="resetGame()">Main Lagi</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Warna bubble neon dengan efek pendar cahaya malam (Glow)
+const BUBBLE_COLORS = {
+  1: { m: '#ff2a5f', l: '#ff7597', g: '#ff2a5fcc' }, // Neon Pink/Red
+  2: { m: '#00f2fe', l: '#73f9ff', g: '#00f2fecc' }, // Neon Cyan
+  3: { m: '#a855f7', l: '#e9d5ff', g: '#a855f7cc' }, // Neon Purple
+  4: { m: '#22c55e', l: '#bbf7d0', g: '#22c55ecc' }, // Neon Green
+  5: { m: '#f5a623', l: '#fef08a', g: '#f5a623cc' }, // Neon Orange/Gold
+};
+const COLOR_IDS = Object.keys(BUBBLE_COLORS).map(Number);
+
+let ROWS = 11;
+let COLS = 8;
+let radius = 0;
+let score = 0;
+let gameOver = false;
+
+let grid = [];
+let currentBubble = null;
+let nextBubble = null;
+let particles = [];
+let isShooting = false;
+let deadLineY = 0; // Batas bawah murni matematika
+
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playSound(type) {
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    if (type === 'shoot') {
+      osc.type = 'triangle'; osc.frequency.setValueAtTime(450, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(180, audioCtx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    } else if (type === 'pop') {
+      osc.type = 'sine'; osc.frequency.setValueAtTime(350, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(700, audioCtx.currentTime + 0.04);
+      gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.06);
+    } else if (type === 'drop') {
+      osc.type = 'sine'; osc.frequency.setValueAtTime(250, audioCtx.currentTime);
+      osc.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+    }
+  } catch(e){}
+}
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+  radius = canvas.width / (COLS + 0.5) / 2;
+  
+  // LOGIKA BATAS: Garis batas dipatok pas di bawah baris ke-9 agar player punya ruang bernapas
+  deadLineY = 9 * radius * Math.sqrt(3) + radius * 2;
+  if (grid.length === 0) initGrid();
+}
+// ---- GRID INITIALIZATION ----
+function initGrid() {
+  grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      if (r < 4) { // Modal awal 4 baris bubble neon acak
+        grid[r][c] = COLOR_IDS[Math.floor(Math.random() * COLOR_IDS.length)];
+      } else {
+        grid[r][c] = 0;
+      }
+    }
+  }
+  spawnNewBubble();
+}
+
+function getBubbleCoords(r, c) {
+  const isOdd = r % 2 !== 0;
+  const x = c * radius * 2 + radius + (isOdd ? radius : 0);
+  const y = r * radius * Math.sqrt(3) + radius;
+  return { x, y };
+}
+
+function spawnNewBubble() {
+  if (!currentBubble) {
+    currentBubble = {
+      x: canvas.width / 2,
+      y: canvas.height - radius * 2.5,
+      colorId: COLOR_IDS[Math.floor(Math.random() * COLOR_IDS.length)],
+      vx: 0, vy: 0
+    };
+  } else {
+    currentBubble = {
+      x: canvas.width / 2,
+      y: canvas.height - radius * 2.5,
+      colorId: nextBubble.colorId,
+      vx: 0, vy: 0
+    };
+  }
+  nextBubble = {
+    colorId: COLOR_IDS[Math.floor(Math.random() * COLOR_IDS.length)]
+  };
+}
+
+// ---- LOGIKA BIDIKAN LASER 3 JALUR (THREE-LINE LASER GUIDE) ----
+let aimAngle = 0;
+let isAiming = false;
+
+function updateAim(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = clientX - rect.left;
+  const mouseY = clientY - rect.top;
+  
+  const dx = mouseX - (canvas.width / 2);
+  const dy = mouseY - (canvas.height - radius * 2.5);
+  
+  if (dy < -10) {
+    aimAngle = Math.atan2(dy, dx);
+    isAiming = true;
+  }
+}
+
+canvas.addEventListener('mousedown', e => { initAudio(); updateAim(e.clientX, e.clientY); });
+canvas.addEventListener('mousemove', e => { if (isAiming) updateAim(e.clientX, e.clientY); });
+window.addEventListener('mouseup', () => { if (isAiming) { shootBubble(); isAiming = false; } });
+
+canvas.addEventListener('touchstart', e => { initAudio(); const t = e.touches[0]; updateAim(t.clientX, t.clientY); }, { passive: true });
+canvas.addEventListener('touchmove', e => { const t = e.touches[0]; updateAim(t.clientX, t.clientY); }, { passive: true });
+canvas.addEventListener('touchend', () => { if (isAiming) { shootBubble(); isAiming = false; } });
+
+function shootBubble() {
+  if (isShooting || gameOver) return;
+  const speed = 16; // Kecepatan luncur peluru kilat
+  currentBubble.vx = Math.cos(aimAngle) * speed;
+  currentBubble.vy = Math.sin(aimAngle) * speed;
+  isShooting = true;
+  playSound('shoot');
+}
+
+// ---- PHYSICS & COLLISION DETECTION ----
+function update() {
+  if (gameOver) return;
+
+  // Efek Partikel Hidup: Gravitasi + Memudar lambat
+  particles.forEach((p, index) => {
+    p.x += p.vx; 
+    p.y += p.vy;
+    p.vy += 0.15; // Dorongan gravitasi jatuh ke bawah
+    p.alpha -= 0.03;
+    if (p.alpha <= 0) particles.splice(index, 1);
+  });
+
+  if (!isShooting) return;
+
+  currentBubble.x += currentBubble.vx;
+  currentBubble.y += currentBubble.vy;
+
+  if (currentBubble.x - radius <= 0 || currentBubble.x + radius >= canvas.width) {
+    currentBubble.vx *= -1;
+    currentBubble.x = currentBubble.x - radius <= 0 ? radius : canvas.width - radius;
+  }
+
+  let collided = false;
+  if (currentBubble.y - radius <= 0) {
+    collided = true;
+  } else {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c] !== 0) {
+          const coords = getBubbleCoords(r, c);
+          const dist = Math.hypot(currentBubble.x - coords.x, currentBubble.y - coords.y);
+          if (dist < radius * 1.75) { collided = true; break; }
+        }
+      }
+      if (collided) break;
+    }
+  }
+
+  if (collided) {
+    snapToGrid();
+    isShooting = false;
+  }
+}
+
+function snapToGrid() {
+  let bestR = 0, bestC = 0, minDist = Infinity;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === 0) {
+        const coords = getBubbleCoords(r, c);
+        const dist = Math.hypot(currentBubble.x - coords.x, currentBubble.y - coords.y);
+        if (dist < minDist) { minDist = dist; bestR = r; bestC = c; }
+      }
+    }
+  }
+
+  grid[bestR][bestC] = currentBubble.colorId;
+  const matches = findMatches(bestR, bestC, currentBubble.colorId);
+  
+  if (matches.length >= 3) {
+    let popCount = 0;
+    matches.forEach(([r, c]) => {
+      createParticles(grid[r][c], r, c);
+      grid[r][c] = 0;
+      popCount++;
+    });
+    score += popCount * 15;
+    playSound('pop');
+    dropFloatingBubbles();
+  }
+
+  // VALIDASI REAL-TIME DEAD LINE: Cek apakah ada bubble aktif tersisa yang melewati batas bawah murni matematika
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] !== 0) {
+        const coords = getBubbleCoords(r, c);
+        if (coords.y + radius >= deadLineY) {
+          gameOver = true;
+          document.getElementById('final-score').textContent = score;
+          document.getElementById('overlay').classList.add('show');
+        }
+      }
+    }
+  }
+
+  document.getElementById('score-display').textContent = score;
+  spawnNewBubble();
+}
+
+// ---- FLOOD FILL ALGORITHM ----
+function getNeighbors(r, c) {
+  const isOdd = r % 2 !== 0;
+  const n = [ [r, c-1], [r, c+1], [r-1, c], [r+1, c] ];
+  if (isOdd) { n.push([r-1, c+1], [r+1, c+1]); }
+  else { n.push([r-1, c-1], [r+1, c-1]); }
+  return n.filter(([nr, nc]) => nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS);
+}
+
+function findMatches(startR, startC, colorId) {
+  const queue = [[startR, startC]];
+  const matches = [];
+  const visited = new Set();
+  visited.add(`${startR},${startC}`);
+
+  while (queue.length > 0) {
+    const [r, c] = queue.shift();
+    if (grid[r][c] === colorId) {
+      matches.push([r, c]);
+      getNeighbors(r, c).forEach(([nr, nc]) => {
+        const key = `${nr},${nc}`;
+        if (!visited.has(key) && grid[nr][nc] === colorId) {
+          visited.add(key); queue.push([nr, nc]);
+        }
+      });
+    }
+  }
+  return matches;
+}
+
+function dropFloatingBubbles() {
+  const connected = new Set();
+  const queue = [];
+  for (let c = 0; c < COLS; c++) {
+    if (grid[0][c] !== 0) { connected.add(`0,${c}`); queue.push([0, c]); }
+  }
+  while (queue.length > 0) {
+    const [r, c] = queue.shift();
+    getNeighbors(r, c).forEach(([nr, nc]) => {
+      if (grid[nr][nc] !== 0 && !connected.has(`${nr},${nc}`)) {
+        connected.add(`${nr},${nc}`); queue.push([nr, nc]);
+      }
+    });
+  }
+  let droppedCount = 0;
+  for (let r = 1; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] !== 0 && !connected.has(`${r},${c}`)) {
+        createParticles(grid[r][c], r, c);
+        grid[r][c] = 0;
+        droppedCount++;
+      }
+    }
+  }
+  if (droppedCount > 0) { score += droppedCount * 25; playSound('drop'); }
+}
+
+function createParticles(colorId, r, c) {
+  const coords = getBubbleCoords(r, c);
+  const color = BUBBLE_COLORS[colorId].m;
+  for (let i = 0; i < 10; i++) { // Jumlah kembang api dinaikkan biar heboh
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 5;
+    particles.push({
+      x: coords.x, y: coords.y,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      color, alpha: 1, r: 1.5 + Math.random() * 3.5
+    });
+  }
+}
+
+// ---- ADVANCED GLOW GRAPHICS RENDERING ----
+function drawBubble(x, y, colorId) {
+  const c = BUBBLE_COLORS[colorId];
+  ctx.save();
+  
+  // Efek Neon Glow Nyala Malam
+  ctx.shadowBlur = 12;
+  ctx.shadowColor = c.g;
+  
+  ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
+  const grad = ctx.createRadialGradient(x - radius/3, y - radius/3, radius/8, x, y, radius);
+  grad.addColorStop(0, c.l); grad.addColorStop(0.3, c.m); grad.addColorStop(1, '#00000044');
+  
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 1. GAMBAR GARIS BATAS BAWAH (DEAD LINE NEON PULSE)
+  ctx.save();
+  ctx.beginPath();
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 2;
+  // Efek berdenyut transparan menggunakan fungsi waktu sinus murni
+  ctx.globalAlpha = 0.3 + Math.abs(Math.sin(Date.now() / 250)) * 0.5;
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = '#ef4444';
+  ctx.moveTo(0, deadLineY);
+  ctx.lineTo(canvas.width, deadLineY);
+  ctx.stroke();
+  ctx.restore();
+
+  // 2. GAMBAR BIDIKAN LASER TIGA JALUR (THREE-LINE SYSTEM)
+  if (isAiming && currentBubble) {
+    const startX = canvas.width / 2;
+    const startY = canvas.height - radius * 2.5;
+    const length = canvas.height;
+    
+    ctx.save();
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(255,255,255,0.5)';
+    
+    // Jalur Kiri (Tipis)
+    ctx.beginPath(); ctx.setLineDash([4, 10]); ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 1;
+    ctx.moveTo(startX - radius, startY);
+    ctx.lineTo((startX - radius) + Math.cos(aimAngle) * length, startY + Math.sin(aimAngle) * length);
+    ctx.stroke();
+
+    // Jalur Tengah (Utama & Tebal)
+    ctx.beginPath(); ctx.setLineDash([8, 6]); ctx.strokeStyle = 'rgba(0, 242, 254, 0.6)'; ctx.lineWidth = 2.5;
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(startX + Math.cos(aimAngle) * length, startY + Math.sin(aimAngle) * length);
+    ctx.stroke();
+
+    // Jalur Kanan (Tipis)
+    ctx.beginPath(); ctx.setLineDash([4, 10]); ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 1;
+    ctx.moveTo(startX + radius, startY);
+    ctx.lineTo((startX + radius) + Math.cos(aimAngle) * length, startY + Math.sin(aimAngle) * length);
+    ctx.stroke();
+    
+    ctx.restore();
+  }
+
+  // 3. GAMBAR ISI GRID PAPAN
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] !== 0) {
+        const coords = getBubbleCoords(r, c);
+        drawBubble(coords.x, coords.y, grid[r][c]);
+      }
+    }
+  }
+
+  // 4. GAMBAR SERPIHAN PARTIKEL JATUH
+  particles.forEach(p => {
+    ctx.save(); ctx.globalAlpha = p.alpha; ctx.beginPath();
+    ctx.fillStyle = p.color; ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  });
+
+  // 5. GAMBAR PROYEKTIL PELURU & ANTRIAN BERIKUTNYA
+  if (currentBubble && !gameOver) {
+    drawBubble(currentBubble.x, currentBubble.y, currentBubble.colorId);
+  }
+  if (nextBubble && !gameOver) {
+    drawBubble(radius * 2, canvas.height - radius * 1.8, nextBubble.colorId);
+    
+    // Teks info kecil "NEXT" di atas bola cadangan
+    ctx.fillStyle = '#64748b'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+    ctx.fillText('NEXT', radius * 2, canvas.height - radius * 3.1);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function resetGame() {
+  document.getElementById('overlay').classList.remove('show');
+  score = 0; gameOver = false; isShooting = false;
+  document.getElementById('score-display').textContent = '0';
+  initGrid();
+}
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
